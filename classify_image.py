@@ -1,5 +1,6 @@
 import argparse
 import base64
+from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 import json
 import mimetypes
@@ -12,6 +13,7 @@ from openai import OpenAI
 
 LMSTUDIO_URL = "http://localhost:1234/v1"
 MODEL_NAME = "smolvlm2-2.2b-instruct"
+MAX_WORKERS = 4
 IMAGE_EXTENSIONS = {".bmp", ".gif", ".jpeg", ".jpg", ".png", ".webp"}
 
 
@@ -26,8 +28,8 @@ def parse_arguments():
     parser.add_argument(
         "output",
         nargs="?",
-        default="tags.json",
-        help="Output JSON file (default: tags.json).",
+        default=None,
+        help="Output JSON file (default: tags.json in the input directory).",
     )
     parser.add_argument(
         "--max-pixels",
@@ -126,15 +128,32 @@ def load_existing_results(output_path):
     return existing_results
 
 
+def classify_pending_image(image_path, image_directory, client, max_pixels):
+    start_time = perf_counter()
+    tags = classify_image(image_path, client, max_pixels)
+    elapsed_time = perf_counter() - start_time
+    return {
+        "file": str(image_path.relative_to(image_directory)),
+        "tags": tags,
+        "elapsed_time": elapsed_time,
+    }
+
+
 def main():
     arguments = parse_arguments()
     if arguments.max_pixels < 1:
         raise ValueError("--max-pixels must be at least 1")
     image_directory = Path(arguments.directory).resolve()
-    output_path = Path(arguments.output).resolve()
+    output_path = (
+        image_directory / "tags.json"
+        if arguments.output is None
+        else Path(arguments.output).resolve()
+    )
 
     if not image_directory.is_dir():
         raise NotADirectoryError(f"Image directory not found: {image_directory}")
+    if output_path.is_dir():
+        output_path /= "tags.json"
 
     image_paths = sorted(
         path for path in image_directory.iterdir()
@@ -162,24 +181,34 @@ def main():
     check_lmstudio()
     client = OpenAI(base_url=LMSTUDIO_URL, api_key="lm-studio")
 
+    processing_start = perf_counter()
+    print(f"Tagging {len(pending_images)} images with {MAX_WORKERS} workers...")
     tagging_times = []
-    for image_path in pending_images:
-        print(f"Tagging {image_path.name}...")
-        start_time = perf_counter()
-        tags = classify_image(image_path, client, arguments.max_pixels)
-        elapsed_time = perf_counter() - start_time
-        tagging_times.append(elapsed_time)
-        results.append(
-            {
-                "file": str(image_path.relative_to(image_directory)),
-                "tags": tags,
-            }
-        )
-        print(f"Completed in {elapsed_time:.3f} seconds")
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = {
+            executor.submit(
+                classify_pending_image,
+                image_path,
+                image_directory,
+                client,
+                arguments.max_pixels,
+            ): image_path
+            for image_path in pending_images
+        }
+        completed_results = []
+        for future in futures:
+            result = future.result()
+            completed_results.append(result)
+            tagging_times.append(result.pop("elapsed_time"))
+            print(f"Completed {result['file']} in {tagging_times[-1]:.3f} seconds")
+
+    results.extend(completed_results)
 
     output_path.write_text(json.dumps(results, indent=2), encoding="utf-8")
+    total_processing_time = perf_counter() - processing_start
     print(f"Wrote tags for {len(pending_images)} new images to {output_path}")
     print(f"Average tagging time: {sum(tagging_times) / len(tagging_times):.3f} seconds per image")
+    print(f"Total processing time: {total_processing_time:.3f} seconds")
 
 
 if __name__ == "__main__":

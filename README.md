@@ -62,10 +62,23 @@ From Git Bash in the project directory, process images in the current directory 
 ./run_classify_image.sh
 ```
 
+To process a directory and write `tags.json` inside that same directory:
+
+```bash
+./run_classify_image.sh /e/images/01
+```
+
 To process another directory and choose a different output file:
 
 ```bash
 ./run_classify_image.sh path/to/images output.json
+```
+
+The output argument may also be an existing directory. In that case, the
+script writes `tags.json` inside that directory:
+
+```bash
+./run_classify_image.sh data/ /e/images/01
 ```
 
 When the output JSON already exists, the script checks its `file` entries and skips images that have already been tagged. This makes it safe to rerun the same command after adding new images; only the new images are sent to LM Studio.
