@@ -32,8 +32,8 @@ def parse_arguments():
     parser.add_argument(
         "--max-pixels",
         type=int,
-        default=512*28*28,
-        help="Maximum total pixels sent to the model (default: 512*28*28).",
+        default=256*28*28,
+        help="Maximum total pixels sent to the model (default: 256*28*28).",
     )
     return parser.parse_args()
 
@@ -59,9 +59,9 @@ def encode_image(image_path, max_pixels):
         scale = (max_pixels / (image.width * image.height)) ** 0.5
         resized_size = (max(1, int(image.width * scale)), max(1, int(image.height * scale)))
         image = image.convert("RGB")
-        image.thumbnail(resized_size, Image.Resampling.LANCZOS)
+        image.thumbnail(resized_size, Image.Resampling.BILINEAR)
         buffer = BytesIO()
-        image.save(buffer, format="JPEG", quality=85, optimize=True)
+        image.save(buffer, format="JPEG", quality=75, optimize=True)
         return base64.b64encode(buffer.getvalue()).decode("utf-8"), "image/jpeg"
 
 
@@ -99,7 +99,7 @@ def classify_image(image_path, client, max_pixels):
                         "tags": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "minItems": 10,
+                            "minItems": 5,
                             "maxItems": 10,
                         },
                     },
