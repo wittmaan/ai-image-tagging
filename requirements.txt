@@ -1,0 +1,6 @@
+openai
+moondream
+pillow
+requests
+sentence-transformers==3.4.1
+transformers==4.48.3

@@ -1,0 +1,13 @@
+# Local Python environments and caches
+.venv/
+.env
+__pycache__/
+*.py[cod]
+
+# Local image data and generated metadata
+data/
+Bild.png
+tags.json
+
+# Optional local output files
+tags.local.json
